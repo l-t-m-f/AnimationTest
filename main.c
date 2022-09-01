@@ -1,6 +1,7 @@
 // Standard
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <time.h>
 #include <ctype.h>
 #include <assert.h>
@@ -8,15 +9,11 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_gpu.h>
 
-#include <stdlib.h>
+#include <stdio.h>
 
 #define MAX_ANIM_LEN 40
 #define MAX_ANIM_COUNT 20
 #define FRAME_DUR 0.01f
-
-//#define DEBUG
-
-typedef uint8_t u8;
 
 typedef struct _pair Pair;
 typedef struct _animation Animation;
@@ -47,30 +44,16 @@ enum _animation_key
 
 struct _pair
 {
-    u8 a;
-    u8 b;
+    int a;
+    int b;
 };
 
 struct _animation
 {
     AnimationKey name;
-    u8 length;
+    int length;
     Pair frames[MAX_ANIM_LEN];
 };
-
-const u8 rows = 11, cols = 7;
-const u8 width = 50, height = 37;
-
-Pair current_pair;
-
-GPU_Target *windowPtr = NULL;
-GPU_Image *hero = NULL;
-
-static void capture_unused_cmd_args(int argc, char *argv[]);
-static double time_spec_seconds(struct timespec* ts);
-static void take_time(Timespec *ts);
-static bool try_next_frame(Timespec *tend, Timespec *tstart);
-static void draw_frame(GPU_Rect *rectPtr, Animation *animPtr, u8 f);
 
 Animation animations[MAX_ANIM_COUNT] = {
     {IDLE1, 4, { {0, 0}, {0, 1}, {0, 2}, {0, 3} }},
@@ -91,133 +74,58 @@ Animation animations[MAX_ANIM_COUNT] = {
     {JUMP2, 4, { {9, 6}, {10, 0}, {10, 1} }}
 };
 
-int main(int argc, char *argv[])
-{
-    SDL_Init(SDL_INIT_VIDEO);
-    windowPtr = GPU_InitRenderer(GPU_RENDERER_OPENGL_3, 200, 200, GPU_DEFAULT_INIT_FLAGS);
-    hero = GPU_LoadImage("gfx/adventurer-sheet.png");
+const int rows = 11, cols = 7;
+const int width = 50, height = 37;
 
-    if (hero == NULL)
-    {
-        printf("GPU_LoadImage failed!");
-    }
+GPU_Target *windowPtr = NULL;
+GPU_Image *hero = NULL;
+
+double anim_speed = 24;
+bool exe_done = false;
+Pair current_pair;
+
+static void init_sdl(void);
+static void take_input(Animation *current, int *index);
+static void prepare_sprites(GPU_Rect *sprites);
+static void capture_unused_cmd_args(int argc, char *argv[]);
+static void take_time(Timespec *ts);
+static void try_next_frame(Animation *anim, double *time_buffer, int *index);
+static void draw_frame(GPU_Rect *rectPtr, Animation *animPtr, int f);
+static double time_spec_seconds(Timespec* ts);
+
+int main(int argc, char *argv[])
+{ 
+    init_sdl();
 
     GPU_Rect sprites[rows * cols];
-
-    for (int i = 0; i < rows; i++)
-    {
-        for (int j = 0; j < cols; j++)
-        {
-            sprites[(i * cols) + j] = (GPU_Rect){ (float)(j * width), (float)(i * height), (float)width, (float)height };
-        }
-    }
-    
     Animation current = animations[IDLE1];
-    u8 index = 0;
-
+    int index = 0;
+    double time_buffer = 0, time_elapsed = 0, elapsed_nano;
     Timespec tstart = {0,0}, tend = {0,0}, tadjust = {0,0};
-    SDL_Event event;
-    bool done = false;
 
-    take_time(&tstart);
-    take_time(&tend);
+    prepare_sprites(sprites);
 
-    while(!done) 
+    while(!exe_done) 
     {
-        
-        while(SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT)
-            {
-                done = true;
-            }
-            else if (event.type == SDL_KEYDOWN) 
-            {
-                if (event.key.keysym.sym == SDLK_ESCAPE)
-                    done = true;
+        elapsed_nano = 0; 
 
-                if (event.key.keysym.scancode == SDL_SCANCODE_Q)
-                {
-                    current = animations[IDLE1];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_W)
-                {
-                    current = animations[CROUCH];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_E)
-                {
-                    current = animations[RUN];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_R)
-                {
-                    current = animations[JUMP];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_T)
-                {
-                    current = animations[MID];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_Y)
-                {
-                    current = animations[FALL];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_U)
-                {
-                    current = animations[SLIDE];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_I)
-                {
-                    current = animations[GRAB];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_O)
-                {
-                    current = animations[CLIMB];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_P)
-                {
-                    current = animations[IDLE2];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_A)
-                {
-                    current = animations[ATTACK1];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_S)
-                {
-                    current = animations[ATTACK2];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_D)
-                {
-                    current = animations[ATTACK3];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_F)
-                {
-                    current = animations[HURT];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_G)
-                {
-                    current = animations[DIE];
-                }
-                else if (event.key.keysym.scancode == SDL_SCANCODE_H)
-                {
-                    current = animations[JUMP];
-                }
-                index = 0;
-            }
-        }
-
+        take_time(&tstart);
+        take_input(&current, &index);
         draw_frame(sprites, &current, index);
 
-        if(try_next_frame(&tend, &tstart))
-        {
-            index++;
-            take_time(&tstart);
+        time_buffer += time_elapsed;
 
-            if (index >= current.length)
-            {
-                index = 0;
-            }
-        }
+        try_next_frame(&current, &time_buffer, &index);
+       
+        SDL_Delay(50);
 
         take_time(&tend);
+        elapsed_nano = time_spec_seconds(&tend) - time_spec_seconds(&tstart);
+
+        SDL_Delay(50);
+
+        take_time(&tadjust);
+        time_elapsed = time_spec_seconds(&tadjust) - time_spec_seconds(&tstart);
 
     }
 
@@ -231,6 +139,148 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+static void init_sdl(void)
+{
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        printf("FATAL ERROR: SDL_INIT_VIDEO failed!\n");
+    }
+    windowPtr = GPU_InitRenderer(GPU_RENDERER_OPENGL_3, 200, 200, GPU_DEFAULT_INIT_FLAGS);
+    if (windowPtr == NULL)
+    {
+        printf("FATAL ERROR: GPU_InitRenderer failed!\n");
+    }
+    hero = GPU_LoadImage("gfx/adventurer-sheet.png");
+    if (hero == NULL)
+    {
+        printf("GPU_LoadImage failed!\n");
+    }
+}
+
+static void prepare_sprites(GPU_Rect *sprites)
+{
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
+            sprites[(i * cols) + j] = (GPU_Rect){ (float)(j * width), (float)(i * height), (float)width, (float)height };
+        }
+    }
+}
+
+static void take_time(Timespec *ts)
+{
+    clock_gettime(CLOCK_REALTIME, ts);
+}
+
+static void take_input(Animation *current, int *index)
+{
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        if (event.type == SDL_QUIT)
+        {
+            exe_done = true;
+        }
+        else if (event.type == SDL_KEYDOWN)
+        {
+            if (event.key.keysym.sym == SDLK_ESCAPE)
+                exe_done = true;
+
+            if (event.key.keysym.scancode == SDL_SCANCODE_Q)
+            {
+                *current = animations[IDLE1];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_W)
+            {
+                *current = animations[CROUCH];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_E)
+            {
+                *current = animations[RUN];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_R)
+            {
+                *current = animations[JUMP];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_T)
+            {
+                *current = animations[MID];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_Y)
+            {
+                *current = animations[FALL];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_U)
+            {
+                *current = animations[SLIDE];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_I)
+            {
+                *current = animations[GRAB];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_O)
+            {
+                *current = animations[CLIMB];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_P)
+            {
+                *current = animations[IDLE2];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_A)
+            {
+                *current = animations[ATTACK1];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_S)
+            {
+                *current = animations[ATTACK2];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_D)
+            {
+                *current = animations[ATTACK3];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_F)
+            {
+                *current = animations[HURT];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_G)
+            {
+                *current = animations[DIE];
+            }
+            else if (event.key.keysym.scancode == SDL_SCANCODE_H)
+            {
+                *current = animations[JUMP];
+            }
+            *index = 0;
+        }
+    }
+}
+
+static void draw_frame(GPU_Rect *rectPtr, Animation *animPtr, int f)
+{
+    GPU_Clear(windowPtr);
+
+    current_pair = animPtr->frames[f];
+    int position = (int)((current_pair.a * cols) + current_pair.b);
+    GPU_BlitTransformX(hero, &rectPtr[position], windowPtr,
+                       75, 75, 0, 0, 0, 1, 1);
+
+    GPU_Flip(windowPtr);
+}
+
+static void try_next_frame(Animation *anim, double *time_buffer, int *index)
+{
+    if (*time_buffer > (double)(1/anim_speed))
+    {
+        *time_buffer = 0;
+        (*index)++;
+
+        if (*index >= anim->length)
+        {
+            *index = 0;
+        }
+    }
+}
 static void capture_unused_cmd_args(int argc, char *argv[])
 {
     char *capture[argc];
@@ -246,52 +296,4 @@ static void capture_unused_cmd_args(int argc, char *argv[])
 static double time_spec_seconds(Timespec* ts) 
 {
     return (double) ts->tv_sec + (double) ts->tv_nsec * 1.0e-9;
-}
-
-static void take_time(Timespec *ts)
-{
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, ts);
-#ifdef DEBUG
-    printf("%lf\n", time_spec_seconds(ts));
-#endif
-}
-
-static bool try_next_frame(Timespec *tend, Timespec *tstart)
-{
-    double time_passed = time_spec_seconds(tend) - time_spec_seconds(tstart);
-
-#ifdef DEBUG
-    printf("%lf - %lf = %lf\n", time_spec_seconds(tend), time_spec_seconds(tstart), time_passed);
-#endif
-
-    if (time_passed > FRAME_DUR)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
-static void draw_frame(GPU_Rect *rectPtr, Animation *animPtr, u8 f)
-{
-    GPU_Clear(windowPtr);
-
-    current_pair = animPtr->frames[f];
-    int position = (int)((current_pair.a * cols) + current_pair.b);
-    GPU_BlitTransformX(hero, &rectPtr[position], windowPtr,
-                       75, 75, 0, 0, 0, 1, 1);
-
-#ifdef DEBUG
-    printf("Showing frame %d of %d\n", f, animPtr->length);
-    printf("located at %d, %d on the spritesheet\n", current_pair.a, current_pair.b);
-#endif
-
-    GPU_Flip(windowPtr);
-}
-
-static void limit_fps(void)
-{
-
 }
