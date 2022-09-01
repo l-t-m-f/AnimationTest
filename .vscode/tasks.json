@@ -1,0 +1,47 @@
+{
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "cppbuild",
+            "command": "F:\\tools\\msys64\\mingw64\\bin\\gcc.exe",
+            "args": [
+                "-g",
+                "-Wall",
+                "-Wextra",
+                "-Wfloat-equal",
+                "-Wundef",
+                "-Wshadow",
+                "-Wpointer-arith",
+                "-Wcast-align",
+                "-Wstrict-prototypes",
+                "-Wstrict-overflow=2",
+                "-Wwrite-strings",
+                "-Waggregate-return",
+                "-Wcast-qual",
+                //"-Wswitch-default",
+                "-Wswitch-enum",
+                "-Wconversion",
+                "-Wunreachable-code",
+                "-IF:\\librairies\\C\\msvc\\include",
+                "-I${workspaceFolder}\\src\\headers",
+                "-I${workspaceFolder}\\gfx",
+                "-LF:\\librairies\\C\\msvc\\libs\\SDL2",
+                "${workspaceFolder}\\*.c",
+                "-o",
+                "${workspaceFolder}\\out\\${fileBasenameNoExtension}.exe",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_gpu"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "build",
+            "detail": "compiler: F:\\tools\\msys64\\mingw64\\bin\\gcc.exe"
+        }
+    ],
+    "version": "2.0.0"
+}
